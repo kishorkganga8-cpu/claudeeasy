@@ -4,6 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, execFileSync } = require('node:child_process');
+const { resolveProvider, endpoint } = require('./providers');
 const port = 43847, upstreamPort = 43848;
 const dataDir = path.join(__dirname, 'test-data');
 const probeScript = path.join(__dirname, 'launch-probe.ps1');
@@ -16,11 +17,16 @@ let last;
 const mock = http.createServer(async (req, res) => {
   const chunks = []; for await (const chunk of req) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString();
-  last = { path: req.url, key: req.headers.authorization || req.headers['x-api-key'], body: raw ? JSON.parse(raw) : null };
+  last = { path: req.url, key: req.headers.authorization || req.headers['x-api-key'], session: req.headers['x-opencode-session'], body: raw ? JSON.parse(raw) : null };
   res.setHeader('content-type', 'application/json');
   if (req.method === 'GET' && req.url === '/v1/chat/completions/models') return res.end(JSON.stringify({ data: [{ id: 'mercury-3', name: 'Mercury 3' }] }));
   if (req.method === 'GET' && req.url === '/api/v1/models') return res.end(JSON.stringify({ data: [{ id: 'anthropic/claude-test', name: 'Claude Test' }] }));
   if (req.method === 'GET' && req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'openai/gpt-test', name: 'GPT Test' }] }));
+  if (req.method === 'GET' && req.url === '/openai/v1/models') return res.end(JSON.stringify({ data: [{ id: 'groq-chat-test' }] }));
+  if (req.method === 'GET' && req.url === '/models') return res.end(JSON.stringify({ data: [{ id: 'deepseek-chat-test' }] }));
+  if (req.method === 'GET' && req.url === '/v1beta/openai/models') return res.end(JSON.stringify({ data: [{ id: 'gemini-chat-test' }] }));
+  if (req.method === 'GET' && req.url === '/inference/go/v1/models') return res.end(JSON.stringify({ data: [{ id: 'gpt-6-luna' }, { id: 'claude-haiku-5-5' }, { id: 'minimax-m3' }, { id: 'qwen3.8-max' }] }));
+  if (req.url === '/inference/go/anthropic/v1/messages') return res.end(JSON.stringify({ id: 'msg_go', type: 'message', model: last.body.model, role: 'assistant', content: [{ type: 'text', text: 'OpenCode Go OK' }], stop_reason: 'end_turn', usage: { input_tokens: 4, output_tokens: 2 } }));
   if (req.url === '/v1/chat/completions') {
     if (failInception) { res.writeHead(429); return res.end(JSON.stringify({ error: { message: 'Rate limit' } })); }
     return res.end(JSON.stringify({ id: 'chatcmpl_inception', model: last.body.model, choices: [{ finish_reason: 'stop', message: { content: last.body.model === 'mercury-empty' ? '' : 'Mercury OK' } }], usage: { prompt_tokens: 4, completion_tokens: 2 } }));
@@ -37,7 +43,7 @@ const mock = http.createServer(async (req, res) => {
 });
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function startServer() {
-  return spawn(process.execPath, ['server.js'], { cwd: __dirname, env: { ...process.env, CKC_PORT: String(port), CKC_DATA_DIR: dataDir, CKC_INCEPTION_UPSTREAM: `http://127.0.0.1:${upstreamPort}`, CKC_KILO_UPSTREAM: `http://127.0.0.1:${upstreamPort}`, CKC_XKIRO_UPSTREAM: `http://127.0.0.1:${upstreamPort}`, CKC_LAUNCH_SCRIPT: probeScript }, stdio: 'ignore' });
+  return spawn(process.execPath, ['server.js'], { cwd: __dirname, env: { ...process.env, CKC_PORT: String(port), CKC_DATA_DIR: dataDir, CKC_INCEPTION_UPSTREAM: `http://127.0.0.1:${upstreamPort}`, CKC_KILO_UPSTREAM: `http://127.0.0.1:${upstreamPort}`, CKC_XKIRO_UPSTREAM: `http://127.0.0.1:${upstreamPort}`, ...Object.fromEntries(['openrouter', 'openai', 'groq', 'deepseek', 'mistral', 'gemini', 'opencodego'].map(id => [`CKC_${id.toUpperCase()}_UPSTREAM`, `http://127.0.0.1:${upstreamPort}`])), CKC_LAUNCH_SCRIPT: probeScript }, stdio: 'ignore' });
 }
 async function ready() { for (let i = 0; i < 50; i++) { try { const r = await fetch(`http://127.0.0.1:${port}/api/status`); if (r.ok) return; } catch { /* starting */ } await wait(100); } throw new Error('Server did not start'); }
 async function api(route, method = 'GET', body, token) {
@@ -45,6 +51,15 @@ async function api(route, method = 'GET', body, token) {
   return { status: response.status, headers: response.headers, body: await response.text() };
 }
 async function run() {
+  for (const [id, models, chat] of [
+    ['openrouter', 'https://openrouter.ai/api/v1/models', 'https://openrouter.ai/api/v1/chat/completions'],
+    ['openai', 'https://api.openai.com/v1/models', 'https://api.openai.com/v1/chat/completions'],
+    ['groq', 'https://api.groq.com/openai/v1/models', 'https://api.groq.com/openai/v1/chat/completions'],
+    ['deepseek', 'https://api.deepseek.com/models', 'https://api.deepseek.com/chat/completions'],
+    ['mistral', 'https://api.mistral.ai/v1/models', 'https://api.mistral.ai/v1/chat/completions'],
+    ['gemini', 'https://generativelanguage.googleapis.com/v1beta/openai/models', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'],
+    ['opencodego', 'https://opencode.ai/inference/go/v1/models', 'https://opencode.ai/inference/go/anthropic/v1/messages']
+  ]) { assert.equal(endpoint(resolveProvider(id), 'models'), models); assert.equal(endpoint(resolveProvider(id), 'chat'), chat); }
   assert.ok(path.resolve(dataDir).startsWith(path.resolve(__dirname) + path.sep));
   fs.rmSync(dataDir, { recursive: true, force: true });
   fs.writeFileSync(probeScript, `Set-Content -LiteralPath '${probeMarker.replace(/'/g, "''")}' -Value 'launched'`);
@@ -55,6 +70,20 @@ async function run() {
     let result = await api('/api/discover', 'POST', { provider: 'inception', apiKey: 'key-inception' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['mercury-3']);
     result = await api('/api/discover', 'POST', { provider: 'kilo', apiKey: 'key-kilo' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['anthropic/claude-test']);
     result = await api('/api/discover', 'POST', { provider: 'xkiro', apiKey: 'key-xkiro' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['openai/gpt-test']);
+    for (const provider of ['openrouter', 'openai', 'groq', 'deepseek', 'mistral', 'gemini']) {
+      result = await api('/api/discover', 'POST', { provider, apiKey: `key-${provider}` });
+      assert.equal(result.status, 200, `${provider}: ${result.body}`);
+      assert.ok(JSON.parse(result.body).models.length > 0, provider);
+      assert.equal(last.key, `Bearer key-${provider}`);
+    }
+    result = await api('/api/discover', 'POST', { provider: 'opencodego', apiKey: 'key-go' }); assert.equal(result.status, 200);
+    assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['claude-haiku-5-5', 'minimax-m3', 'qwen3.8-max']);
+    assert.equal(last.key, 'Bearer key-go'); assert.match(last.session, /^ses_[0-9a-f]{24}$/);
+    result = await api('/api/connections', 'POST', { provider: 'opencodego', apiKey: 'key-go', model: 'minimax-m3' }); assert.equal(result.status, 201);
+    const goId = JSON.parse(result.body).connection.id;
+    result = await api(`/api/connections/${goId}/test`, 'POST', {}); assert.equal(result.status, 200); assert.match(result.body, /OpenCode Go OK/);
+    assert.equal(last.path, '/inference/go/anthropic/v1/messages'); assert.equal(last.key, 'Bearer key-go'); assert.match(last.session, /^ses_[0-9a-f]{24}$/);
+    result = await api(`/api/connections/${goId}`, 'DELETE'); assert.equal(result.status, 200);
     result = await api('/api/discover', 'POST', { provider: 'custom', apiKey: 'key-custom', customBase: `http://127.0.0.1:${upstreamPort}/v1`, customDialect: 'openai' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['openai/gpt-test']);
     for (const connection of [
       { provider: 'inception', apiKey: 'key-inception', model: 'mercury-3' },

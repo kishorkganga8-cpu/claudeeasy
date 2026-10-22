@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const { execFile } = require('node:child_process');
 const { toOpenAI, fromOpenAI, sendSse } = require('./inception');
-const { PRESETS, resolveProvider, endpoint, publicConnection } = require('./providers');
+const { PRESETS, resolveProvider, endpoint, publicConnection, supportsClaudeCodeModel } = require('./providers');
 const vault = require('./vault');
 
 const HOST = '127.0.0.1';
@@ -49,6 +49,7 @@ function allowed(req) {
 }
 function save(next) { vault.save(VAULT_FILE, next); connections = next; }
 function credentials(provider, key) {
+  if (provider.id === 'opencodego') return { authorization: `Bearer ${key}`, 'anthropic-version': '2023-06-01', 'x-opencode-session': `ses_${crypto.createHash('sha256').update(clientToken).digest('hex').slice(0, 24)}` };
   return provider.dialect === 'anthropic'
     ? { 'x-api-key': key, 'anthropic-version': '2023-06-01' }
     : { authorization: `Bearer ${key}` };
@@ -68,7 +69,7 @@ async function discover(provider, key) {
   if (!response.ok) throw new Error(upstreamError(raw, response.status).message);
   const parsed = JSON.parse(raw);
   const list = Array.isArray(parsed.data) ? parsed.data : Array.isArray(parsed.models) ? parsed.models : [];
-  const models = list.map(item => typeof item === 'string' ? { id: item, name: item } : { id: item.id || item.name, name: item.display_name || item.name || item.id }).filter(item => validModel(item.id));
+  const models = list.map(item => typeof item === 'string' ? { id: item, name: item } : { id: item.id || item.name, name: item.display_name || item.name || item.id }).filter(item => validModel(item.id) && supportsClaudeCodeModel(provider, item.id));
   models.sort((a, b) => a.name.localeCompare(b.name));
   return models;
 }

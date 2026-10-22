@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 function textParts(value) {
   if (typeof value === 'string') return value;
   if (!Array.isArray(value)) return '';
-  if (value.some(part => part.type === 'image' || part.type === 'document')) throw new Error('Mercury 3 accepts text input only. Remove images and documents from this request.');
+  if (value.some(part => part.type === 'image' || part.type === 'document')) throw new Error('This compatible route currently accepts text input only. Remove images and documents from this request.');
   return value.filter(part => part.type === 'text').map(part => part.text || '').join('\n');
 }
 function toOpenAI(input, model, tokenField = 'max_completion_tokens') {

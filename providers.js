@@ -3,8 +3,19 @@ const PRESETS = {
   inception: { label: 'Inception', dialect: 'openai', base: 'https://api.inceptionlabs.ai', modelsPath: '/v1/chat/completions/models', chatPath: '/v1/chat/completions', tokenField: 'max_completion_tokens' },
   kilo: { label: 'Kilo Gateway', dialect: 'openai', base: 'https://ai-gateway.kilo.ai', modelsPath: '/api/v1/models', chatPath: '/api/v1/chat/completions', tokenField: 'max_tokens' },
   xkiro: { label: 'xKiro', dialect: 'anthropic', base: 'https://api.xkiro.com', modelsPath: '/v1/models', chatPath: '/v1/messages' },
-  anthropic: { label: 'Anthropic', dialect: 'anthropic', base: 'https://api.anthropic.com', modelsPath: '/v1/models?limit=1000', chatPath: '/v1/messages' }
+  anthropic: { label: 'Anthropic', dialect: 'anthropic', base: 'https://api.anthropic.com', modelsPath: '/v1/models?limit=1000', chatPath: '/v1/messages' },
+  openrouter: { label: 'OpenRouter', dialect: 'openai', base: 'https://openrouter.ai', modelsPath: '/api/v1/models', chatPath: '/api/v1/chat/completions', tokenField: 'max_tokens' },
+  openai: { label: 'OpenAI', dialect: 'openai', base: 'https://api.openai.com', modelsPath: '/v1/models', chatPath: '/v1/chat/completions', tokenField: 'max_completion_tokens' },
+  groq: { label: 'Groq', dialect: 'openai', base: 'https://api.groq.com', modelsPath: '/openai/v1/models', chatPath: '/openai/v1/chat/completions', tokenField: 'max_tokens' },
+  deepseek: { label: 'DeepSeek', dialect: 'openai', base: 'https://api.deepseek.com', modelsPath: '/models', chatPath: '/chat/completions', tokenField: 'max_tokens' },
+  mistral: { label: 'Mistral', dialect: 'openai', base: 'https://api.mistral.ai', modelsPath: '/v1/models', chatPath: '/v1/chat/completions', tokenField: 'max_tokens' },
+  gemini: { label: 'Gemini', dialect: 'openai', base: 'https://generativelanguage.googleapis.com', modelsPath: '/v1beta/openai/models', chatPath: '/v1beta/openai/chat/completions', tokenField: 'max_tokens' },
+  opencodego: { label: 'OpenCode Go', dialect: 'anthropic', base: 'https://opencode.ai', modelsPath: '/inference/go/v1/models', chatPath: '/inference/go/anthropic/v1/messages' }
 };
+function supportsClaudeCodeModel(provider, modelId) {
+  if (provider.id !== 'opencodego') return true;
+  return /^(claude-|qwen|kimi-k3(?:$|-)|deepseek-v4(?:$|[.-])|minimax-m3(?:$|[.-]))/i.test(modelId);
+}
 function resolveProvider(id, customBase, customDialect) {
   if (PRESETS[id]) {
     const preset = { id, ...PRESETS[id] };
@@ -27,4 +38,4 @@ function endpoint(provider, kind) {
 function publicConnection(connection) {
   return { id: connection.id, provider: connection.provider, label: resolveProvider(connection.provider, connection.customBase, connection.customDialect).label, model: connection.model, customBase: connection.customBase || '', customDialect: connection.customDialect || '', keyHint: `••••${connection.key.slice(-4)}` };
 }
-module.exports = { PRESETS, resolveProvider, endpoint, publicConnection };
+module.exports = { PRESETS, resolveProvider, endpoint, publicConnection, supportsClaudeCodeModel };
