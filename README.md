@@ -5,6 +5,7 @@ A local Windows website that connects several API providers to Claude Code. Add 
 ## Start
 
 1. Clone or download this repository. Install Node.js 18 or newer, then double-click **Start Website.cmd**. Keep its gateway window running. You can also run `npm start`.
+   From Git Bash on Windows, run `bash launch.sh` to start the gateway and open the website.
 2. Open `http://127.0.0.1:3848/`. Choose **Inception**, **Kilo Gateway**, **xKiro**, **Anthropic**, or **Custom compatible API**.
 3. Paste that provider's API key. The site fetches its available models automatically. Pick a model and click **Add to fallback list**. Repeat for more providers.
 4. The top route is primary. Use **Move up** and **Move down** to set fallback priority. Test each route using its **Test** button.
