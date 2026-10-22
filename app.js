@@ -1,5 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const chatLink = document.createElement('a'); chatLink.href = '/chat'; chatLink.textContent = 'Open chat app →'; chatLink.style.cssText = 'display:inline-block;margin:12px 0 0;color:#bc674a;font-weight:700;text-decoration:none'; document.querySelector('.brand').append(chatLink);
 let routes = [];
 let discoveryTimer;
 function status(id, message, kind = '') { $(id).textContent = message; $(id).className = `status ${kind}`; }

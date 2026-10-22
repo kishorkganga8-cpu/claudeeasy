@@ -1,6 +1,6 @@
 # claudeeasy
 
-A local Windows website that connects several API providers to Claude Code. Add one or more providers, select a model for each, and put them in fallback order.
+A local Windows chat app and API gateway that connects several providers to Claude Code. Add one or more providers, select a model for each, and put them in fallback order.
 
 ## Start
 
@@ -10,8 +10,16 @@ A local Windows website that connects several API providers to Claude Code. Add 
 3. Paste that provider's API key. The site fetches its available models automatically. Pick a model and click **Add to fallback list**. Repeat for more providers.
 4. The top route is primary. Use **Move up** and **Move down** to set fallback priority. Test each route using its **Test** button.
 5. Click **Open Claude Code** to launch a new window. The window uses your primary model and tries subsequent routes if a provider fails. You can also run **Run Claude Code.cmd** from this same folder.
+6. Double-click **Open Chat App.cmd** for a separate chat window. The chat app uses the installed Claude Code CLI with the same local gateway and fallback list. You can also visit `http://127.0.0.1:3848/chat`.
 
-Claude Code itself must already be installed. The separate Windows ZIP package includes a bundled Node.js runtime.
+Claude Code itself must already be installed. The separate Windows ZIP package includes a bundled Node.js runtime. The chat launcher uses Chrome or Edge app mode when available, giving it a separate window; it does not install a second browser or replace the official Claude app.
+
+## Chat app
+
+- The app provides text chat, streaming replies, stop, chat history, and a link to the provider settings page.
+- Chats are saved locally in `data/chats.json`. Claude Code also maintains its own resumable transcripts under its user profile. Neither is included in the ZIP or Git repository.
+- Chat mode launches Claude Code with tools disabled. It is designed for conversation; use **Open Claude Code** from the connections page for terminal coding work and tool permissions.
+- The model displayed at the top is the primary route. The gateway may use a fallback route if it fails.
 
 ## Provider endpoints
 

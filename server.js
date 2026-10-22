@@ -7,6 +7,7 @@ const { Readable } = require('node:stream');
 const { execFile } = require('node:child_process');
 const { toOpenAI, fromOpenAI, sendSse } = require('./inception');
 const { PRESETS, resolveProvider, endpoint, publicConnection, supportsClaudeCodeModel } = require('./providers');
+const { createChatService } = require('./chat-service');
 const vault = require('./vault');
 
 const HOST = '127.0.0.1';
@@ -18,6 +19,7 @@ fs.mkdirSync(DATA, { recursive: true });
 const clientToken = fs.existsSync(TOKEN_FILE) ? fs.readFileSync(TOKEN_FILE, 'utf8').trim() : crypto.randomBytes(32).toString('hex');
 if (!fs.existsSync(TOKEN_FILE)) fs.writeFileSync(TOKEN_FILE, clientToken, { mode: 0o600 });
 let connections = vault.load(VAULT_FILE);
+const chats = createChatService({ dataDir: DATA, gatewayUrl: `http://${HOST}:${PORT}`, getPrimary: () => connections[0], clientToken });
 
 function json(res, status, body) {
   const data = Buffer.from(JSON.stringify(body));
@@ -98,11 +100,30 @@ async function handle(req, res) {
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
   const pathname = url.pathname;
   if (!allowed(req)) return error(res, 403, 'Invalid host or origin.');
-  if (req.method === 'GET' && (pathname === '/' || pathname === '/app.js')) {
-    const file = path.join(__dirname, pathname === '/' ? 'index.html' : 'app.js');
+  if (req.method === 'GET' && ['/', '/app.js', '/chat', '/chat.js'].includes(pathname)) {
+    const file = path.join(__dirname, ({ '/': 'index.html', '/app.js': 'app.js', '/chat': 'chat.html', '/chat.js': 'chat.js' })[pathname]);
     const body = fs.readFileSync(file);
-    res.writeHead(200, { 'content-type': pathname === '/' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8', 'content-length': body.length, 'cache-control': 'no-store', ...(pathname === '/' ? { 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'" } : {}) });
+    res.writeHead(200, { 'content-type': pathname === '/' || pathname === '/chat' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8', 'content-length': body.length, 'cache-control': 'no-store', ...(['/', '/chat'].includes(pathname) ? { 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'" } : {}) });
     return res.end(body);
+  }
+  if (pathname === '/api/chat/sessions' && req.method === 'GET') return json(res, 200, { sessions: chats.list() });
+  if (pathname === '/api/chat/sessions' && req.method === 'POST') return json(res, 201, { session: chats.create() });
+  const chatPath = /^\/api\/chat\/sessions\/([0-9a-f-]+)(?:\/(messages|stop))?$/.exec(pathname);
+  if (chatPath) {
+    const id = chatPath[1], action = chatPath[2];
+    if (req.method === 'GET' && !action) { const chat = chats.get(id); return chat ? json(res, 200, { session: chat }) : error(res, 404, 'Chat not found.'); }
+    if (req.method === 'DELETE' && !action) { try { return chats.remove(id) ? json(res, 200, { removed: true }) : error(res, 404, 'Chat not found.'); } catch (cause) { return error(res, 409, cause.message); } }
+    if (req.method === 'POST' && action === 'stop') return json(res, 200, { stopped: chats.stop(id) });
+    if (req.method === 'POST' && action === 'messages') {
+      let input; try { input = await readJson(req, 64 * 1024); } catch { return error(res, 400, 'Invalid message.'); }
+      if (!chats.get(id)) return error(res, 404, 'Chat not found.');
+      if (typeof input.text !== 'string' || !input.text.trim() || input.text.length > 50000) return error(res, 400, 'Enter a message under 50,000 characters.');
+      if (!connections.length) return error(res, 400, 'Add a provider in Connections first.');
+      res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      const send = event => { if (!res.destroyed) { res.write(JSON.stringify(event) + '\n'); if (['done', 'error', 'stopped'].includes(event.type)) res.end(); } };
+      try { chats.reply(id, input.text, send); } catch (cause) { send({ type: 'error', message: cause.message }); }
+      return;
+    }
   }
   if (req.method === 'GET' && pathname === '/api/status') return json(res, 200, { configured: connections.length > 0, model: connections[0]?.model || '', provider: connections[0]?.provider || '', count: connections.length, endpoint: `http://${HOST}:${PORT}` });
   if (req.method === 'GET' && pathname === '/api/connections') return json(res, 200, { connections: connections.map(publicConnection), providers: Object.entries(PRESETS).map(([id, value]) => ({ id, label: value.label })) });
