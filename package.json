@@ -1,0 +1,8 @@
+{
+  "name": "claudeeasy",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Multi-provider Claude Code compatible local API gateway",
+  "scripts": { "start": "node server.js", "test": "node test.js" },
+  "engines": { "node": ">=18" }
+}
