@@ -20,8 +20,8 @@ const mock = http.createServer(async (req, res) => {
   last = { path: req.url, key: req.headers.authorization || req.headers['x-api-key'], session: req.headers['x-opencode-session'], body: raw ? JSON.parse(raw) : null };
   res.setHeader('content-type', 'application/json');
   if (req.method === 'GET' && req.url === '/v1/chat/completions/models') return res.end(JSON.stringify({ data: [{ id: 'mercury-3', name: 'Mercury 3' }] }));
-  if (req.method === 'GET' && req.url === '/api/v1/models') return res.end(JSON.stringify({ data: [{ id: 'anthropic/claude-test', name: 'Claude Test' }] }));
-  if (req.method === 'GET' && req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'openai/gpt-test', name: 'GPT Test' }] }));
+  if (req.method === 'GET' && req.url === '/api/v1/models') return res.end(JSON.stringify({ data: [{ id: 'anthropic/claude-test', name: 'Claude Test', pricing: { prompt: '0.1', completion: '0.2' } }, { id: 'nvidia/free-test:free', name: 'Free Test', pricing: { prompt: '0', completion: '0' } }] }));
+  if (req.method === 'GET' && req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'openai/gpt-test', name: 'GPT Test', pricing: { input: 1, output: 2 } }, { id: 'xkiro/free-test', name: 'Free Test', pricing: { input: 0, output: 0 } }] }));
   if (req.method === 'GET' && req.url === '/openai/v1/models') return res.end(JSON.stringify({ data: [{ id: 'groq-chat-test' }] }));
   if (req.method === 'GET' && req.url === '/models') return res.end(JSON.stringify({ data: [{ id: 'deepseek-chat-test' }] }));
   if (req.method === 'GET' && req.url === '/v1beta/openai/models') return res.end(JSON.stringify({ data: [{ id: 'gemini-chat-test' }] }));
@@ -67,16 +67,20 @@ async function run() {
   let child = startServer();
   try {
     await ready();
-    let result = await api('/api/discover', 'POST', { provider: 'inception', apiKey: 'key-inception' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['mercury-3']);
-    result = await api('/api/discover', 'POST', { provider: 'kilo', apiKey: 'key-kilo' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['anthropic/claude-test']);
-    result = await api('/api/discover', 'POST', { provider: 'xkiro', apiKey: 'key-xkiro' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['openai/gpt-test']);
+    let result = await api('/api/discover', 'POST', { provider: 'inception', apiKey: 'key-inception' }); assert.equal(result.status, 200); assert.equal(JSON.parse(result.body).models.length, 0); assert.equal(JSON.parse(result.body).total, 1);
+    result = await api('/api/discover', 'POST', { provider: 'inception', apiKey: 'key-inception', freeOnly: false }); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['mercury-3']);
+    result = await api('/api/discover', 'POST', { provider: 'kilo', apiKey: 'key-kilo' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['nvidia/free-test:free']);
+    result = await api('/api/discover', 'POST', { provider: 'kilo', apiKey: 'key-kilo', freeOnly: false }); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['anthropic/claude-test', 'nvidia/free-test:free']);
+    result = await api('/api/discover', 'POST', { provider: 'xkiro', apiKey: 'key-xkiro' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['xkiro/free-test']);
+    result = await api('/api/discover', 'POST', { provider: 'xkiro', apiKey: 'key-xkiro', freeOnly: false }); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['xkiro/free-test', 'openai/gpt-test']);
+    result = await api('/api/discover', 'POST', { provider: 'openrouter', apiKey: 'key-openrouter' }); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['nvidia/free-test:free']);
     for (const provider of ['openrouter', 'openai', 'groq', 'deepseek', 'mistral', 'gemini']) {
-      result = await api('/api/discover', 'POST', { provider, apiKey: `key-${provider}` });
+      result = await api('/api/discover', 'POST', { provider, apiKey: `key-${provider}`, freeOnly: false });
       assert.equal(result.status, 200, `${provider}: ${result.body}`);
       assert.ok(JSON.parse(result.body).models.length > 0, provider);
       assert.equal(last.key, `Bearer key-${provider}`);
     }
-    result = await api('/api/discover', 'POST', { provider: 'opencodego', apiKey: 'key-go' }); assert.equal(result.status, 200);
+    result = await api('/api/discover', 'POST', { provider: 'opencodego', apiKey: 'key-go', freeOnly: false }); assert.equal(result.status, 200);
     assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['claude-haiku-5-5', 'minimax-m3', 'qwen3.8-max']);
     assert.equal(last.key, 'Bearer key-go'); assert.match(last.session, /^ses_[0-9a-f]{24}$/);
     result = await api('/api/connections', 'POST', { provider: 'opencodego', apiKey: 'key-go', model: 'minimax-m3' }); assert.equal(result.status, 201);
@@ -84,7 +88,7 @@ async function run() {
     result = await api(`/api/connections/${goId}/test`, 'POST', {}); assert.equal(result.status, 200); assert.match(result.body, /OpenCode Go OK/);
     assert.equal(last.path, '/inference/go/anthropic/v1/messages'); assert.equal(last.key, 'Bearer key-go'); assert.match(last.session, /^ses_[0-9a-f]{24}$/);
     result = await api(`/api/connections/${goId}`, 'DELETE'); assert.equal(result.status, 200);
-    result = await api('/api/discover', 'POST', { provider: 'custom', apiKey: 'key-custom', customBase: `http://127.0.0.1:${upstreamPort}/v1`, customDialect: 'openai' }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['openai/gpt-test']);
+    result = await api('/api/discover', 'POST', { provider: 'custom', apiKey: 'key-custom', customBase: `http://127.0.0.1:${upstreamPort}/v1`, customDialect: 'openai', freeOnly: false }); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body).models.map(item => item.id), ['xkiro/free-test', 'openai/gpt-test']);
     for (const connection of [
       { provider: 'inception', apiKey: 'key-inception', model: 'mercury-3' },
       { provider: 'kilo', apiKey: 'key-kilo', model: 'anthropic/claude-test' },

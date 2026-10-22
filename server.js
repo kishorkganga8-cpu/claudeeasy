@@ -8,6 +8,7 @@ const { execFile } = require('node:child_process');
 const { toOpenAI, fromOpenAI, sendSse } = require('./inception');
 const { PRESETS, resolveProvider, endpoint, publicConnection, supportsClaudeCodeModel } = require('./providers');
 const { createChatService } = require('./chat-service');
+const { isFreeModel } = require('./free-models');
 const vault = require('./vault');
 
 const HOST = '127.0.0.1';
@@ -65,15 +66,20 @@ function upstreamError(raw, status) {
   try { const parsed = JSON.parse(raw); message = parsed.error?.message || parsed.message || message; } catch { /* text response */ }
   return { status, message: String(message).slice(0, 500) };
 }
-async function discover(provider, key) {
+async function discover(provider, key, freeOnly = true) {
   const response = await upstream(provider, key, 'models', 'GET');
   const raw = await response.text();
   if (!response.ok) throw new Error(upstreamError(raw, response.status).message);
   const parsed = JSON.parse(raw);
   const list = Array.isArray(parsed.data) ? parsed.data : Array.isArray(parsed.models) ? parsed.models : [];
-  const models = list.map(item => typeof item === 'string' ? { id: item, name: item } : { id: item.id || item.name, name: item.display_name || item.name || item.id }).filter(item => validModel(item.id) && supportsClaudeCodeModel(provider, item.id));
+  const eligible = list.filter(item => {
+    const id = typeof item === 'string' ? item : item?.id || item?.name;
+    return validModel(id) && supportsClaudeCodeModel(provider, id);
+  });
+  const free = eligible.filter(item => isFreeModel(provider, item));
+  const models = (freeOnly ? free : eligible).map(item => typeof item === 'string' ? { id: item, name: item } : { id: item.id || item.name, name: item.display_name || item.name || item.id, free: isFreeModel(provider, item) });
   models.sort((a, b) => a.name.localeCompare(b.name));
-  return models;
+  return { models, total: eligible.length, freeCount: free.length, freeOnly };
 }
 async function callRoute(connection, input) {
   const provider = resolveProvider(connection.provider, connection.customBase, connection.customDialect);
@@ -131,7 +137,7 @@ async function handle(req, res) {
     const input = await readJson(req, 64 * 1024);
     const provider = resolveProvider(input.provider, input.customBase, input.customDialect);
     if (typeof input.apiKey !== 'string' || !input.apiKey.trim()) return error(res, 400, 'Enter an API key first.');
-    try { return json(res, 200, { models: await discover(provider, input.apiKey.trim()) }); }
+    try { return json(res, 200, await discover(provider, input.apiKey.trim(), input.freeOnly !== false)); }
     catch (cause) { return error(res, 502, `Model lookup failed: ${cause.message}`); }
   }
   if (req.method === 'POST' && pathname === '/api/connections') {
@@ -164,7 +170,7 @@ async function handle(req, res) {
       return json(res, 200, { connection: publicConnection(updated) });
     }
     if (req.method === 'GET' && connectionPath[2] === 'models') {
-      try { return json(res, 200, { models: await discover(resolveProvider(connection.provider, connection.customBase, connection.customDialect), connection.key) }); }
+      try { return json(res, 200, await discover(resolveProvider(connection.provider, connection.customBase, connection.customDialect), connection.key, url.searchParams.get('freeOnly') !== 'false')); }
       catch (cause) { return error(res, 502, `Model lookup failed: ${cause.message}`); }
     }
     if (req.method === 'POST' && connectionPath[2] === 'test') {

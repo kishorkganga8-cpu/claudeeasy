@@ -11,9 +11,9 @@ async function request(url, method = 'GET', body) {
   if (!response.ok) throw new Error(data.error?.message || data.error || `HTTP ${response.status}`);
   return data;
 }
-function config() { return { provider: $('provider').value, apiKey: $('apiKey').value.trim(), customBase: $('customBase').value.trim(), customDialect: $('customDialect').value }; }
+function config() { return { provider: $('provider').value, apiKey: $('apiKey').value.trim(), customBase: $('customBase').value.trim(), customDialect: $('customDialect').value, freeOnly: $('freeOnly').checked }; }
 function fillDatalist(element, models) {
-  element.replaceChildren(...models.map(model => { const option = document.createElement('option'); option.value = model.id; option.label = model.name || model.id; return option; }));
+  element.replaceChildren(...models.map(model => { const option = document.createElement('option'); option.value = model.id; option.label = `${model.name || model.id}${model.free ? ' · Free' : ''}`; return option; }));
 }
 async function discoverNew() {
   const input = config();
@@ -23,9 +23,11 @@ async function discoverNew() {
   try {
     const data = await request('/api/discover', 'POST', input);
     fillDatalist($('newModels'), data.models);
-    $('modelHint').textContent = `${data.models.length} models loaded. Start typing to search, or enter an exact ID.`;
+    $('modelHint').textContent = data.freeOnly
+      ? (data.models.length ? `${data.models.length} verified free models. Start typing to search.` : `No verified free models in this provider's catalog. Turn off Free models only to see all ${data.total} models.`)
+      : `${data.models.length} models loaded; ${data.freeCount} verified free. Models without a free label may incur charges.`;
     if (!$('model').value && input.provider === 'inception' && data.models.some(model => model.id === 'mercury-3')) $('model').value = 'mercury-3';
-    status('addStatus', `${data.models.length} models loaded from ${$('provider').selectedOptions[0].text}.`, 'good');
+    status('addStatus', data.models.length ? `${data.models.length} ${data.freeOnly ? 'verified free ' : ''}models loaded from ${$('provider').selectedOptions[0].text}.` : 'No verified free models found for this provider. Turn off Free models only to view all models.', data.models.length ? 'good' : '');
   } catch (error) { status('addStatus', error.message, 'bad'); }
   finally { $('fetchModels').disabled = false; }
 }
@@ -37,6 +39,7 @@ function render() {
 }
 async function refresh() { const data = await request('/api/connections'); routes = data.connections; render(); }
 $('provider').addEventListener('change', () => { $('customFields').style.display = $('provider').value === 'custom' ? 'grid' : 'none'; $('model').value = ''; $('newModels').replaceChildren(); scheduleDiscovery(); });
+$('freeOnly').addEventListener('change', () => { $('model').value = ''; $('newModels').replaceChildren(); scheduleDiscovery(); });
 $('apiKey').addEventListener('input', scheduleDiscovery);
 $('customBase').addEventListener('change', scheduleDiscovery);
 $('customDialect').addEventListener('change', scheduleDiscovery);
@@ -54,7 +57,7 @@ $('routes').addEventListener('click', async event => {
   button.disabled = true; status('routeStatus', `${button.textContent.trim()}…`);
   try {
     if (action === 'test') { const result = await request(`/api/connections/${id}/test`, 'POST', {}); status('routeStatus', `${routes[index].label} works · ${result.model} replied: ${result.reply}`, 'good'); }
-    else if (action === 'models') { const data = await request(`/api/connections/${id}/models`); fillDatalist(card.querySelector('datalist'), data.models); status('routeStatus', `${data.models.length} models loaded for ${routes[index].label}. Edit the model field, then save.`, 'good'); }
+    else if (action === 'models') { const data = await request(`/api/connections/${id}/models?freeOnly=${$('freeOnly').checked}`); fillDatalist(card.querySelector('datalist'), data.models); status('routeStatus', data.models.length ? `${data.models.length} ${data.freeOnly ? 'verified free ' : ''}models loaded for ${routes[index].label}. Edit the model field, then save.` : 'No verified free models for this provider. Turn off Free models only to view all models.', data.models.length ? 'good' : ''); }
     else if (action === 'save-model') { await request(`/api/connections/${id}`, 'PATCH', { model: card.querySelector('.model-edit').value.trim() }); await refresh(); status('routeStatus', 'Model updated.', 'good'); }
     else if (action === 'remove') { await request(`/api/connections/${id}`, 'DELETE'); await refresh(); status('routeStatus', 'Provider removed.', 'good'); }
     else if (action === 'up' || action === 'down') { const ids = routes.map(route => route.id); const other = index + (action === 'up' ? -1 : 1); [ids[index], ids[other]] = [ids[other], ids[index]]; await request('/api/connections/reorder', 'POST', { ids }); await refresh(); status('routeStatus', 'Fallback order updated.', 'good'); }

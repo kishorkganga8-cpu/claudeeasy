@@ -7,7 +7,7 @@ A local Windows chat app and API gateway that connects several providers to Clau
 1. Clone this repository and install Node.js 18 or newer, or extract the Windows ZIP with bundled Node.js. Double-click **Start Website.cmd** and keep its gateway window running. You can also run `npm start` from a clone.
    From Git Bash on Windows, run `bash launch.sh` to start the gateway and open the website.
 2. Open `http://127.0.0.1:3848/`. Choose a provider from the list, or use **Custom compatible API**.
-3. Paste that provider's API key. The site fetches its available models automatically. Pick a model and click **Add to fallback list**. Repeat for more providers.
+3. Paste that provider's API key. The site fetches verified free models automatically. Pick a model and click **Add to fallback list**. Repeat for more providers. Turn off **Free models only** to see the full catalog.
 4. The top route is primary. Use **Move up** and **Move down** to set fallback priority. Test each route using its **Test** button.
 5. Click **Open Claude Code** to launch a new window. The window uses your primary model and tries subsequent routes if a provider fails. You can also run **Run Claude Code.cmd** from this same folder.
 6. Double-click **Open Chat App.cmd** for a separate chat window. The chat app uses the installed Claude Code CLI with the same local gateway and fallback list. You can also visit `http://127.0.0.1:3848/chat`.
@@ -40,6 +40,12 @@ Claude Code itself must already be installed. The separate Windows ZIP package i
 
 For custom APIs, enter a base URL that ends just before `/models` and `/chat/completions` or `/messages`. Remote custom endpoints must use HTTPS; local endpoints may use HTTP on loopback.
 
+## Free model discovery
+
+- **Free models only** is on by default for new connections and model refreshes. xKiro models must have zero input and output prices in its live catalog. Kilo and OpenRouter models must have a free model ID and zero prompt and completion prices. This excludes paid models, trial credits, and models whose prices are unknown.
+- Some providers offer account-level free tiers but do not identify free usage in their model-list API. Those providers show no verified free models in this mode. Turn the filter off to inspect their full catalog; check your account's billing terms before selecting a model.
+- A zero price in the catalog does not guarantee capacity or access for a particular key. Rate limits and promotions can change. The **Test** button checks whether a selected model responds and may use provider quota. Existing saved routes are never removed when the filter changes.
+
 ## Fallback and privacy
 
 - The gateway listens only on `127.0.0.1:3848`. Claude Code receives a local gateway token, never a provider key. Local `data/` files are ignored by Git.
@@ -57,4 +63,4 @@ For custom APIs, enter a base URL that ends just before `/models` and `/chat/com
 - If Claude Code does not start, confirm `claude` is on PATH. The new terminal will show any launch error.
 - If port 3848 is busy, stop the conflicting process. The provided scripts expect this port.
 
-Official API references: [Inception](https://docs.inceptionlabs.ai/api-reference/models/list-chat-models), [Kilo](https://kilo.ai/docs/gateway/api-reference), [xKiro](https://docs.xkiro.com/api/overview/), [Anthropic](https://platform.claude.com/docs/en/api/models/list), [OpenRouter](https://openrouter.ai/docs/api/api-reference/models/get-models), [OpenAI](https://platform.openai.com/docs/api-reference/models/list), [Groq](https://console.groq.com/docs/api-reference), [DeepSeek](https://api-docs.deepseek.com/api/list-models/), [Mistral](https://docs.mistral.ai/api/endpoint/models), [Gemini](https://ai.google.dev/gemini-api/docs/openai/), [OpenCode Go](https://dev.opencode.ai/v2/docs/console/go/) and [its Claude Code guide](https://dev.opencode.ai/v2/docs/console/harnesses/claude-code/).
+Official API references: [Inception](https://docs.inceptionlabs.ai/api-reference/models/list-chat-models), [Kilo](https://kilo.ai/docs/gateway/api-reference), [xKiro](https://docs.xkiro.com/api/list-models/), [Anthropic](https://platform.claude.com/docs/en/api/models/list), [OpenRouter](https://openrouter.ai/docs/api/api-reference/models/get-models), [OpenAI](https://platform.openai.com/docs/api-reference/models/list), [Groq](https://console.groq.com/docs/api-reference), [DeepSeek](https://api-docs.deepseek.com/api/list-models/), [Mistral](https://docs.mistral.ai/api/endpoint/models), [Gemini](https://ai.google.dev/gemini-api/docs/openai/), [OpenCode Go](https://dev.opencode.ai/v2/docs/console/go/) and [its Claude Code guide](https://dev.opencode.ai/v2/docs/console/harnesses/claude-code/).
